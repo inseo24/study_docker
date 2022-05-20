@@ -100,3 +100,181 @@ EXPOSE 80
 # 대신 CMD를 씀 - 이미지 생성 시점에 실행이 아니라 이미지를 기반으로 컨테이너가 실행될 때 실행함
 CMD ["node", "server.js"]
 ```
+
+### 자체 이미지 기반으로 실행하기
+
+이미지 빌드
+
+```bash
+docker build .
+=> [internal] load build definition from Dockerfile          0.0s
+=> => transferring dockerfile: 133B                          0.0s
+=> [internal] load .dockerignore                             0.0s
+=> => transferring context: 2B                               0.0s
+=> [internal] load metadata for docker.io/library/node:late  0.0s
+=> [1/4] FROM docker.io/library/node                         0.1s
+=> [internal] load build context                             0.0s
+=> => transferring context: 8.97kB                           0.0s
+=> [2/4] WORKDIR /app                                        0.0s
+=> [3/4] COPY . /app                                         0.0s
+=> [4/4] RUN npm install                                     2.8s
+=> exporting to image                                        0.1s
+=> => exporting layers                                       0.1s
+=> => writing image sha256:38d638113ae561d80354aa2fc830ca8c
+```
+
+아래 나온 image에서 sha256: 뒤에 있는 문자열 복사
+
+```bash
+docker run 38d638113a
+```
+
+이러고 새로운 cmd를 열어서 docker ps로 확인해보면 실행중인 걸 확인할 수 있음
+
+```bash
+CONTAINER ID   IMAGE        COMMAND                  CREATED          STATUS          PORTS     NAMES
+8ea95ae92ee3   38d638113a   "docker-entrypoint.s…"   54 seconds ago   Up 53 seconds   80/tcp    nice_cohen
+```
+
+EXPOSE 80은 단순히 80포트로 연다는 표시일 뿐, 더 추가적인 작업이 필요함.(단지 문서로서 남기는 정도임)
+
+컨테이너를 docker run으로 실행할 때 플래그를 추가함 -p(publish)
+
+도커에게 어떤 로컬 포트가 있고 이 내부 도커 특정 포트에 엑세스 할 수 있는지 알려줌
+
+```bash
+docker run -p 3000:80 38d638113a
+```
+
+3000 포트는 내 로컬 노트북에서 허용할 포트이고 뒤에 80포트는 도커 내부에서 expose한 포트를 적어주면 된다.
+
+**Dockerfile의 ‘EXPOSE 80’은 선택 사항이다.** 
+
+컨테이너의 프로세스가 이 포트를 노출할 것임을 **문서화**하는 목적이다. 
+
+실제 ‘docker run’을 실행할 때 ‘-p’를 사용해서 실제로 포트를 노출해야 하는데 Dockerfile에 ‘EXPOSE’를 추가해서 이 동작을 문서화하는게 모범적인 사용법이다. 
+
+참고 : ID를 사용할 수 없는 docker 명령의 경우 항상 전체 id를 복사해 사용할 필요는 없다. 앞 부분 몇 개 문자만 사용해도 돌아감. 위에 나온 이미지 문자열을 다 안써도 된다는 말.
+
+### 이미지는 읽기 전용이다
+
+코드를 변경하고 컨테이너를 단지 재시작 해봤자 변경된 코드는 반영되지 않는다.
+
+도커 파일로 생성된 이미지는 읽기 전용이기 때문에 다시 이미지를 빌드해서 해당 이미지로 컨테이너를 시작해야 한다.
+
+### 이미지 레이어 이해하기
+
+이미지를 빌드하거나 재빌드할 때 변경된 부분의 명령과 그 이후 모든 명령이 재평가된다. 다시 빌드하면 Using Cache라는 문구가 뜬다.
+
+도커는 기본적으로 모든 명령에 대해 명령어를 재시작한 후 이전과 동일한지 판단한다. 
+
+변경된 내용이 없으면 그 명령을 다시 거칠 필요 없이 결과를 캐시하고 그 결과를 쓴다.
+
+이걸 레이어 기반이라고 한다. 
+
+이미지 레이어가 생성되고 이 레이어가 캐시된다. 이미지를 기반으로 컨테이너를 실행하면 그 컨테이너는 도커파일에 지정한 명령을 실행한 결과를 이미지 위에 새로운 추가 레이어를 추가한다.
+
+```bash
+FROM node # 1
+
+WORKDIR /app # 2
+
+COPY package.json /app # 7 추가
+
+RUN npm install # 4
+
+COPY . /app # 3
+
+EXPOSE 80 # 5
+
+CMD ["node", "server.js"] # 6
+```
+
+위와 같은 도커 파일이 있다고 하면 6개의 레이어가 있고 코드가 변경되어 3번 레이어에서 도커가 변경을 감지하면 3번부터 이후 작업들도 모두 재빌드한다.(캐싱 안함)
+
+소스 코드 변경이 npm install에 영향을 미치지 않으니 다시 실행될 필요가 없다. 여기서 최적화가 가능하다.
+
+이렇게 모든 파일을 복사한 다음 npm install하는게 아니라 npm install한 후 모두 복사하고 package.json 파일도 /app 에 복사하면 npm install이 재시작되지 않게 할 수 있다.
+
+pacakge.json 파일은 변경되지 않을 거니 그 다음 npm install도 실행되지 않음.
+
+### Recap
+
+1. 도커의 이미지란 무엇일까요?
+    
+    이미지는 읽기/쓰기 액세스 권한이 있는 인스턴스를 실행하는 컨테이너의 blueprint다.
+    
+2. 이미지와 컨테이너가 있는 이유는 무엇일까요? 컨테이너만으로는 왜 안될까요?
+    
+    분리함으로써 여러 컨테이너가 동일한 이미지를 기반으로 하더라도 서로 간섭하지 않는 격리된 상태로 동작한다.
+    
+3. 컨테이너와 관련해 격리는 뭘 의미하나요?
+    
+    컨테이너가 서로 분리되어 있고, 디폴트로 공유된 데이터나 상태가 없음을 의미한다.
+    
+4. 컨테이너는 무엇일까요?
+    
+    이미지의 실행 중인 인스턴스다. 이미지를 기반으로 격리된 소프트웨어 유닛이다. 
+    
+5. 이미지의 내용 context에서 레이어는 뭘 의미할까요?
+    
+    이미지의 모든 명령은 캐시 가능한 레이를 생성한다. 레이어는 이미지 재구축 및 공유를 돕는다.
+    
+6. 이 명령은 무엇을 하나요?
+    
+    ```bash
+    docker build .
+    ```
+    
+    이미지를 구축한다.
+    
+7. 이건 또 뭘할까요?
+    
+    ```bash
+    docker run node
+    ```
+    
+    node라는 이미지를 기반으로 컨테이너를 만들어 실행한다.
+    
+
+### 컨테이너 중지 & 재시작
+
+```bash
+docker start 컨테이너이름
+```
+
+docker start는 처음 했던 docker run과는 다르다. 
+
+docker run 으로 실행하면 새로운 컨테이너가 실행되지만 docker start는 기존에 있던 컨테이너를 재시작한다.
+
+docker start의 경우 detached 모드가 디폴트고, docker run은 attatched가 기본 모드다. 
+
+detached mode로 실행하면 실행 중인 컨테이너에 연결되어 실제 앱에서 실행된 결과가 콘솔에 출력되나 detached mode에서는 그렇지 않다. 
+
+docker run도 detached mode로 시작하고 싶다면 -d 플래그를 붙여주면 된다.
+
+```bash
+docker run -p 8000:80 -d 38d638113a
+```
+
+실행 중에 attach mode로 변경하고 싶다면 attach 명령어를 써주면 된다.
+
+```bash
+docker attach 컨테이너이름
+```
+
+log를 보고 싶은 목적이라면 docker log를 써도 된다.
+
+```bash
+docker logs -f 컨테이너이름
+```
+
+이렇게 하면 향후 컨테이너에서 발생하는 로그를 볼 수 있게 된다.
+
+(-f를 안붙이면 지금까지 뜬 모든 로그가 출력됨, -f를 쓰면 그 이후부터 생기는 로그들만 출력된다.)
+
+-a 플래그를 써서 docker start에서 바로 attached mode로 시작할 수 있다.
+
+```bash
+docker start -a 컨테이너이름
+```
