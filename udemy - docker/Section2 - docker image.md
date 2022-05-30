@@ -1,3 +1,5 @@
+# Section 2 : Docker 이미지 & 컨테이너: 코어 빌딩 블록
+
 ### Module Content
 
 - Two Core Concepts : Images & Containers
@@ -278,3 +280,105 @@ docker logs -f 컨테이너이름
 ```bash
 docker start -a 컨테이너이름
 ```
+
+### interactive 모드
+
+사용자의 입력을 받는 등의 동작이 필요할 때는?
+
+```docker
+FROM python
+
+WORKDIR /app
+
+COPY . /app
+
+CMD ["python", "rng.py"] // rng.py 파일 실행 
+```
+
+```bash
+docker build .
+docker run -it e391df... (-i, -t)
+```
+
+docker start는 detach가 디폴트이므로 -i, -t를 함께 실행해 하면 interactive하게 실행할 수 있다. 
+
+-i : 컨테이너에 입력을 받을 수 있게함
+
+### 이미지 & 컨테이너 삭제
+
+```bash
+docker ps -a
+docker rm elqu... # 실행중인 컨테이너는 삭제 못함
+# docker stop 후 rm 할 수 있다. 
+```
+
+사용되지 않을 때 자동으로 삭제할 수도 있다.
+
+```bash
+docker rmi 230dfbdk # rmi -> 이미지 삭제
+# rm 만 쓰면 컨테이너 삭제
+
+# 사용하지 않는 이미지 모두 삭제
+# docker image prune
+
+# 여러 개 삭제
+docker rmi 1230fdk 1290klda 1233adsf
+```
+
+### 중지된 컨테이너 자동 삭제하기
+
+docker run —help를 이용해서 자주 확인해보기.
+
+컨테이너가 종료될 때 자동으로 이미지가 삭제되는 옵션(--rm)
+
+```bash
+ docker run -p 3000:80 -d --rm 2kdkda93kdac
+```
+
+detached 모드로 실행되고, 컨테이너가 종료되면 컨테이너가 알아서 삭제된다. 
+
+### 이미지 검사
+
+docker image inspect 명령을 이용해 이미지에 대한 정보를 출력할 수 있다. 
+
+몇 가지 중요한 정보는 이미지가 생성된 시간이나 오픈된 port 번호, 사용중인 도커 버전, 운영체제 등에 대한 정보를 알 수 있다. 
+
+### 컨테이너에서 파일 복사하기
+
+docker cp 사용하기
+
+- 컨테이너 → 로컬 호스트
+- 로컬 호스트 → 컨테이너
+
+```bash
+docker cp dummy/. boring_vaughan:/test
+                    destination(container 이름:/목적지)
+
+docker cp boring_vaughan:/test dummy
+docker cp boring_vaughan:/test/test.txt dummy
+                      컨테이너에 있는 걸 -> 로컬 폴더로
+```
+
+### 컨테이너와 이미지에 이름 지정 & 태그 지정
+
+```bash
+docker run --help
+# --name option
+docker run -p 3000:80 -d --rm --name goalsapp 23dadfj39d
+# 위에서 goalsapp 이 이름임
+
+docker stop goalsapp
+docker ps -a
+```
+
+**name : tag**
+
+name : image 의 repository(특정 이미지 그룹)
+
+tag : 그 이미지의 특정 버전(그룹 내에서의 특정 버전)
+
+```docker
+FROM node:14
+```
+
+태그를 지정하는 방법
